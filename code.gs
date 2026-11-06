@@ -28,13 +28,20 @@ function doGet(e) {
 
 // ---------------- LOGIKA APLIKASI ----------------
 
-function prosesLogin(username, password) {
-  var aksesPetugas = { "admin": "1234", "pmik": "ugm2026" }; // Ganti sesuai kebutuhan
-  if (aksesPetugas[username] && aksesPetugas[username] === password) {
-    return responseJSON({ status: "sukses", pesan: "Login berhasil!" });
-  } else {
-    return responseJSON({ status: "gagal", pesan: "Username atau Password salah." });
-  }
+function cekLogin() {
+    var username = document.getElementById("username").value;
+    var password = document.getElementById("password").value;
+
+    // Jika username dan password benar
+    if (username === "admin" && password === "12345") {
+        alert("Login Berhasil!");
+        
+        // Maksud instruksinya adalah menambahkan baris ini di sini:
+        window.location.href = "fath.html"; 
+        
+    } else {
+        alert("Username atau Password salah!");
+    }
 }
 
 function simpanDataPasien(data) {
