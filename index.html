@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FATH System - MIK UGM</title>
+  
+  <!-- Library Peta Leaflet untuk Geospasial -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; }
+    /* Bagian Login */
+    #login-section { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+    .login-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 300px; text-align: center; }
+    .login-box input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
+    .login-box button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    
+    /* Bagian Dashboard */
+    #dashboard-section { display: none; padding: 20px; max-width: 1000px; margin: auto; }
+    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    #map { height: 400px; width: 100%; border-radius: 8px; z-index: 1; }
+    input[type="text"] { padding: 8px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    .btn-save { padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <!-- ================= LOG IN SECTION ================= -->
+  <div id="login-section">
+    <div class="login-box">
+      <h2>Sistem FATH</h2>
+      <input type="text" id="username" placeholder="Username">
+      <input type="password" id="password" placeholder="Password">
+      <button id="btnLogin" onclick="prosesLogin()">Masuk</button>
+      <p id="pesan-login" style="font-size: 14px; margin-top: 10px;"></p>
+    </div>
+  </div>
+
+  <!-- ================= DASHBOARD SECTION ================= -->
+  <div id="dashboard-section">
+    <div class="card" style="display: flex; justify-content: space-between; align-items: center; background-color: #2c3e50; color: white;">
+      <h2>Dashboard Petugas RM</h2>
+      <button onclick="logout()" style="padding: 8px 15px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Keluar</button>
+    </div>
+    
+    <div class="card">
+      <h3>Input Pasien Baru</h3>
+      <input type="text" id="inputRM" placeholder="No RM (Misal: 11-22-99)">
+      <input type="text" id="inputNama" placeholder="Nama Pasien">
+      <input type="text" id="inputICD" placeholder="Kode ICD (Misal: R50.9)">
+      <button class="btn-save" onclick="simpanKeSheets()">Simpan ke Database</button>
+      <span id="pesan-simpan" style="margin-left: 10px; color: green; font-size: 14px;"></span>
+    </div>
+
+    <div class="card">
+      <h3>Peta Sebaran Pasien (DIY)</h3>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <!-- ================= JAVASCRIPT ================= -->
+  <script>
+    // ⚠️ GANTI STRING DI BAWAH INI DENGAN URL WEB APP DARI GOOGLE APPS SCRIPT ANDA ⚠️
+    const API_URL="https://script.google.com/macros/s/AKfycbzp7ytxlFBE0sOmPY1v3uKbpNey02uRVb1OmyNFc-OYV9N2vfwGneEKC269d90psEsAw/exec";
+
+    // 1. Logika Login (Menghubungi API)
+    async function prosesLogin() {
+      const user = document.getElementById("username").value;
+      const pass = document.getElementById("password").value;
+      const btn = document.getElementById("btnLogin");
+      const pesan = document.getElementById("pesan-login");
+
+      btn.innerText = "Memproses...";
+      btn.disabled = true;
+      pesan.style.color = "blue";
+      pesan.innerText = "Mengecek kredensial...";
+
+      const payload = { action: "login", username: user, password: pass };
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" }, // Wajib text/plain untuk bypass CORS Apps Script
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (result.status === "sukses") {
+          document.getElementById("login-section").style.display = "none";
+          document.getElementById("dashboard-section").style.display = "block";
+          muatPeta(); // Render peta setelah login
+        } else {
+          pesan.style.color = "red";
+          pesan.innerText = result.pesan;
+        }
+      } catch (error) {
+        pesan.style.color = "red";
+        pesan.innerText = "Terjadi kesalahan jaringan.";
+      } finally {
+        btn.innerText = "Masuk";
+        btn.disabled = false;
+      }
+    }
+
+    // 2. Logika Menyimpan Data (Menghubungi API)
+    async function simpanKeSheets() {
+      const noRM = document.getElementById("inputRM").value;
+      const nama = document.getElementById("inputNama").value;
+      const icd10 = document.getElementById("inputICD").value;
+      const pesan = document.getElementById("pesan-simpan");
+
+      if(!noRM || !nama) {
+        pesan.style.color = "red"; pesan.innerText = "Lengkapi data!"; return;
+      }
+
+      pesan.style.color = "blue"; pesan.innerText = "Menyimpan...";
+
+      // Dummy koordinat untuk contoh (Tugu Jogja)
+      const dataPasien = { noRM: noRM, nama: nama, kecamatan: "Gondokusuman", lat: -7.7829, lng: 110.3671, diagnosis: "Diagnosis Baru", icd10: icd10 };
+      const payload = { action: "simpanPasien", data: dataPasien };
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        pesan.style.color = "green"; 
+        pesan.innerText = result.pesan;
+        setTimeout(() => { pesan.innerText = ""; }, 3000);
+      } catch (error) {
+        pesan.style.color = "red"; 
+        pesan.innerText = "Gagal menyimpan.";
+      }
+    }
+
+    // 3. Logika Memuat Peta & Menarik Data
+    async function muatPeta() {
+      const map = L.map('map').setView([-7.7956, 110.3695], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+      const payload = { action: "getPasien" };
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (result.status === "sukses") {
+          result.data.forEach(pasien => {
+            if (pasien.lat && pasien.lng) {
+              L.marker([pasien.lat, pasien.lng])
+               .bindPopup(`<b>${pasien.nama} (${pasien.noRM})</b><br>Kec: ${pasien.kecamatan}<br>ICD-10: ${pasien.icd10}`)
+               .addTo(map);
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Gagal menarik data peta:", error);
+      }
+    }
+
+    function logout() {
+      document.getElementById("dashboard-section").style.display = "none";
+      document.getElementById("login-section").style.display = "flex";
+      document.getElementById("password").value = "";
+      document.getElementById("pesan-login").innerText = "";
+    }
+  </script>
+</body>
+</html>
